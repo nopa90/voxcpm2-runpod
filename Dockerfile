@@ -9,11 +9,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Python dependencies
-COPY requirements.txt /app/requirements.txt
+COPY builder/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy worker code
-COPY handler.py /app/handler.py
+COPY src/handler.py /app/handler.py
 
 # Environment
 ENV HF_HOME=/app/cache/huggingface
