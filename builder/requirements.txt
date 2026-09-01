@@ -1,0 +1,6 @@
+torch>=2.5.0
+torchaudio>=2.5.0
+torchcodec
+voxcpm
+runpod>=1.6.0
+soundfile>=0.12.0
