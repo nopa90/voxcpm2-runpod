@@ -62,7 +62,7 @@ def ensure_model_downloaded() -> str:
 
 def load_model():
     """Load VoxCPM2 (downloading first if needed)."""
-    global model
+    global model, SAMPLE_RATE
     if model is not None:
         return model
     model_dir = ensure_model_downloaded()
@@ -75,6 +75,7 @@ def load_model():
         model_dir,
         load_denoiser=False,
     )
+    SAMPLE_RATE = model.tts_model.sample_rate  # typically 48000
 
     elapsed = time.time() - t0
     print(f"[voxcpm2] Model loaded in {elapsed:.1f}s", flush=True)
@@ -85,7 +86,7 @@ def load_model():
 # kills the worker before the serverless runtime reports the error, and the
 # job hangs IN_QUEUE forever while the worker crash-loops.
 model = None
-SAMPLE_RATE = model.tts_model.sample_rate  # 48000
+SAMPLE_RATE = 48000  # default until the model reports its real rate on load
 
 
 # ---------------------------------------------------------------------------
