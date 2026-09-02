@@ -78,13 +78,19 @@ Weights verification (from the proven volume download): `model.safetensors`
     and deleted when workers hung server-side. Account is at **zero endpoints**.
   - Endpoint creation uses the SDK (`runpod.create_template` + `runpod.create_endpoint`)
   - Gotcha: endpoint `gpuIds` takes **GPU pool IDs** (`ADA_24`, `AMPERE_80`, …), not model names like "NVIDIA L4"
-- [ ] Step 5: Test the endpoint (`scripts/04-test-endpoint.py` — basic TTS, voice_design, clone)
-  - Recreate endpoint from template when ready; test one job before scaling
+- [x] Step 5: Test the endpoint — **PASSED** (2026-09-02). See `TEST-RESULTS.md`.
+  - Endpoint `d6wx79l48172qr` (template `cr67vewzar` → `:weights` = commit `b92ce81`)
+  - 7 jobs completed: plain tts + 6× `voice_design` (distinct Russian voices: commander,
+    young woman, elder narrator, soldier, anchor, villain) — all user-approved
+  - 73 s stitched demo saved locally at `tests/audio/voxcpm-long-test.wav`
+  - Generation ≈ realtime on L4 warm worker; cold start ~2-4 min
 
-**Bugfixes shipped in the image (commit `77df5b1`):**
+**Bugfixes shipped in the image (commit `b92ce81`):**
 1. voxcpm + latest transformers broke (`LlamaTokenizerFast` TypeError) → pinned `transformers==4.51.3`
 2. model loaded at import crashed the worker silently → lazy-load inside `handler()`
 3. leftover `SAMPLE_RATE = model.tts_model...` at import dereferenced None → set after load
+4. entire handler body wrapped in try/except → every failure returns `{"error": ...}`
+   as a completed job; nothing can throw and poison the queue
 
 The removed `runpod.toml`/`hub.json`/obsolete scripts documented the abandoned
 venv-on-volume and volume-based paths; only `scripts/04-test-endpoint.py` remains.
