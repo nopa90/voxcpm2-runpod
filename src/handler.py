@@ -138,32 +138,38 @@ def cleanup_file(path: str):
 
 
 def handler(job):
-    load_model()  # lazy: loads on first request, cached for the worker lifetime
-    data = job["input"]
-
-    text = data.get("text", "").strip()
-    if not text:
-        return {"error": "No 'text' provided in input."}
-
-    mode = data.get("mode", "tts")
-
-    # Common generation params
-    gen_kwargs = {}
-    if "cfg_value" in data:
-        gen_kwargs["cfg_value"] = float(data["cfg_value"])
-    if "inference_timesteps" in data:
-        gen_kwargs["inference_timesteps"] = int(data["inference_timesteps"])
-    if "seed" in data:
-        gen_kwargs["seed"] = int(data["seed"])
-
+    """RunPod entry point. The ENTIRE body is wrapped so no exception can ever
+    escape the handler: an uncaught exception marks the job FAILED and can
+    trigger retry/queue churn. Returning a dict (even an error) always completes
+    the job cleanly with a readable payload."""
     temp_files = []
-
     try:
+        data = job.get("input") or {}
+
+        text = data.get("text", "").strip()
+        if not text:
+            return {"error": "No 'text' provided in input."}
+
+        mode = data.get("mode", "tts")
+
+        # Lazy model load: cached on the global after the first success.
+        # Inside the try so a load failure is REPORTED, never thrown.
+        load_model()
+
+        # Common generation params
+        gen_kwargs = {}
+        if "cfg_value" in data:
+            gen_kwargs["cfg_value"] = float(data["cfg_value"])
+        if "inference_timesteps" in data:
+            gen_kwargs["inference_timesteps"] = int(data["inference_timesteps"])
+        if "seed" in data:
+            gen_kwargs["seed"] = int(data["seed"])
+
         # ---- Mode routing ----
 
         if mode == "voice_design":
-            # Voice design: text should already be formatted as
-            # "(voice description)Text to speak."
+            # Voice design: text must be formatted as
+            # "(voice description)Text to speak." (README-confirmed)
             wav = model.generate(text=text, **gen_kwargs)
 
         elif mode == "clone":
@@ -214,10 +220,10 @@ def handler(job):
             wav = model.generate(text=text, **gen_kwargs)
 
         # Encode result
-        result = encode_wav_b64(wav, SAMPLE_RATE)
-        return result
+        return encode_wav_b64(wav, SAMPLE_RATE)
 
     except Exception as e:
+        # Report, never throw. Worker stays healthy; job completes with error.
         return {"error": str(e), "type": type(e).__name__}
 
     finally:
