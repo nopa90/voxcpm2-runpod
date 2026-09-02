@@ -1,0 +1,33 @@
+# VoxCPM2 worker with model weights BAKED IN (fast cold starts, ~5 GB larger image)
+# Built by .github/workflows/build-weights.yml -> tag :weights
+
+# ---- Stage 1: download + verify weights ----
+FROM debian:bookworm-slim AS weights
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates coreutils \
+    && rm -rf /var/lib/apt/lists/*
+COPY builder/download-weights.sh /tmp/download-weights.sh
+RUN bash /tmp/download-weights.sh /weights
+
+# ---- Stage 2: runtime image ----
+FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git ffmpeg libsndfile1 libsndfile1-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY builder/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+COPY src/handler.py /app/handler.py
+
+# Baked-in weights: handler's runtime download is skipped automatically
+COPY --from=weights /weights /app/models/VoxCPM2
+
+ENV HF_HOME=/app/cache/huggingface
+ENV TORCH_HOME=/app/cache/torch
+ENV TOKENIZERS_PARALLELISM=false
+ENV VOXCPM_MODEL_DIR=/app/models/VoxCPM2
+
+CMD ["python3", "-u", "/app/handler.py"]

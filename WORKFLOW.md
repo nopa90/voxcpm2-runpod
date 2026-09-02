@@ -37,7 +37,7 @@ Deploy [VoxCPM2](https://github.com/OpenBMB/VoxCPM) (OpenBMB, 2B params, 30 lang
      └─────────────┘
 ```
 
-## Model Weights (on Network Volume)
+## Model Weights
 
 | File                            | Size     |
 |---------------------------------|----------|
@@ -46,7 +46,19 @@ Deploy [VoxCPM2](https://github.com/OpenBMB/VoxCPM) (OpenBMB, 2B params, 30 lang
 | `tokenizer.json`               | 3.5 MB   |
 | **Total**                       | **~4.8 GB** |
 
-With 10 GB volume = ~5.2 GB headroom for cache and temp audio files.
+Two delivery options, both built by the GitHub Actions workflows in the repo:
+
+| Image tag | Workflow | Weights | Use when |
+|-----------|----------|---------|----------|
+| `:latest` | `build.yml` | downloaded at worker cold start (~4.6 GB from HF, cached on worker) | default POC |
+| `:weights` | `build-weights.yml` | **baked into the image** (SHA-256-verified download at build time) | fast cold starts; +5 GB image size |
+
+Both use the same `src/handler.py`; the handler skips its runtime download
+when `VOXCPM_MODEL_DIR` already contains `model.safetensors`.
+
+Weights verification (from the proven volume download): `model.safetensors`
+= 4,580,080,592 B, sha256 `f7f964cfa9da23653baec6e6f7750719977ad944ed9f95fe52fe3a620506891d`;
+`audiovae.pth` = 376,951,122 B.
 
 ---
 
@@ -56,16 +68,18 @@ With 10 GB volume = ~5.2 GB headroom for cache and temp audio files.
   - History: `d1zjhd73vh` (10 GB US-CA-2) → deleted for stock issues; `834lt42bp3`
     (20 GB US-MO-2) → held verified model → deleted per user decision
 - [x] Step 2: Model download procedure proven (curl retry loop, verified SHA-256)
-- [ ] Step 3: Build Docker image **remotely** (RunPod's registry — image storage is free)
-  - Local build was abandoned: ~10 GB base + ~3 GB wheels at ~1 MB/s + big push.
-    See reference/runpod-api-lessons.md for the local-build post-mortem.
+- [x] Step 3: Build Docker image via **GitHub Actions** → Docker Hub (`nopa90/voxcpm2-runpod`)
+  - repo: https://github.com/nopa90/voxcpm2-runpod (secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`)
+  - workflow: `.github/workflows/build.yml` → tag `:latest` (code only, cold-start weights)
+  - workflow: `.github/workflows/build-weights.yml` → tag `:weights` (weights baked in)
+  - Local build abandoned: ~13 GB over home internet; runpod CLI has no remote builder
 - [ ] Step 4: Create Serverless Endpoint (no volume — workers can run in any DC with stock)
 - [ ] Step 5: Test the endpoint
 
-**Strategy change:** no Network Volume for the POC. The worker downloads the
-model from HuggingFace on first cold start into its container disk (cached
-across requests on the same worker). Trade-off: slow first request per
-(~4.6 GB download), but no volume cost and no DC-pinning problem.
+**Strategy change:** no Network Volume. Model weights either download from
+HuggingFace on worker cold start (image `:latest`) or are baked into the image
+(`:weights`). No volume cost, no DC-pinning problem. Docker Hub public image
+storage is free.
 
 **Step 4 image build — corrected plan:** the runpod CLI has no remote builder
 (`runpod builder` does not exist in v1.x; `project deploy` is venv-on-volume,
