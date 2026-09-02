@@ -2,5 +2,8 @@ torch>=2.5.0
 torchaudio>=2.5.0
 torchcodec
 voxcpm
+# voxcpm allows transformers>=4.36.2 with no upper bound; latest (4.5x) broke
+# LlamaTokenizerFast (TypeError: Input must be a List[Union[str, AddedToken]])
+transformers==4.51.3
 runpod>=1.6.0
 soundfile>=0.12.0

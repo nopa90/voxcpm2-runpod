@@ -62,6 +62,9 @@ def ensure_model_downloaded() -> str:
 
 def load_model():
     """Load VoxCPM2 (downloading first if needed)."""
+    global model
+    if model is not None:
+        return model
     model_dir = ensure_model_downloaded()
     print(f"[voxcpm2] Loading model from {model_dir} ...", flush=True)
     t0 = time.time()
@@ -78,7 +81,10 @@ def load_model():
     return model
 
 
-model = load_model()
+# Lazy-loaded on first request. NEVER load at import time: an import failure
+# kills the worker before the serverless runtime reports the error, and the
+# job hangs IN_QUEUE forever while the worker crash-loops.
+model = None
 SAMPLE_RATE = model.tts_model.sample_rate  # 48000
 
 
@@ -131,6 +137,7 @@ def cleanup_file(path: str):
 
 
 def handler(job):
+    load_model()  # lazy: loads on first request, cached for the worker lifetime
     data = job["input"]
 
     text = data.get("text", "").strip()
