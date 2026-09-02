@@ -1,7 +1,56 @@
 # VoxCPM2 RunPod — Test Results & Learnings (2026-09-02)
 
-Status: **POC endpoint verified end-to-end.** 7 jobs completed, six distinct
-Russian voices generated via `voice_design`, one 73 s stitched demo.
+Status: **Two serverless endpoints verified end-to-end.** 7 TTS jobs + 1
+whisper transcription job completed. Six distinct Russian voices generated via
+`voice_design`, transcribed back by whisper with word-for-word accuracy.
+
+## Whisper round-trip verification (2026-09-02)
+
+Deployed `yairlifshitz/whisper-runpod-serverless:latest` (weights-baked image,
+9.64 GB compressed — same weights-in-image pattern) to verify our synthesized
+Russian audio transcribes cleanly.
+
+| Endpoint | Image | Template | GPU | Workers |
+|----------|-------|----------|-----|---------|
+| `d6wx79l48172qr` — voxcpm2-tts | `nopa90/voxcpm2-runpod:weights` | `cr67vewzar` | ADA_24 | 0-2 |
+| `w9ic3c9cmvx2i2` — whisper-ivrit | `yairlifshitz/whisper-runpod-serverless:latest` | `dg21plqv81` | ADA_24 | 0-2 |
+
+Test: transcribed `tests/audio/voxcpm-seg-01-commander.wav` (12.5 s Russian,
+auto language detect) with `faster-whisper` / `large-v3-turbo`.
+
+- **Result: word-for-word match** to the source script, 3 segments:
+  1. "Флот, говорит командир, сегодня ночью мы держим рубеж."
+  2. "Враг прорвался на северном хребте, но мы не отдадим ни метра земли."
+  3. "Приготовиться к обороне, огонь открывать только по моему сигналу."
+- Word confidences 0.98-1.0, `avg_logprob -0.089`, `no_speech_prob 0`
+- Job COMPLETED in 76.7 s wall (cold start incl. 9.6 GB image pull + model load)
+- Output = aggregate stream of `progress` + `segments` events (word timestamps,
+  `speakers` field present for diarization), not a flat transcript
+- Punctuation normalized by whisper (commas vs periods at boundaries) — expect
+  to re-punctuate transcripts if exact text matters
+
+Request shape (engine, model, transcribe_args with `blob` or `url`):
+
+```json
+{ "input": { "engine": "faster-whisper", "model": "large-v3-turbo",
+             "transcribe_args": { "blob": "<base64>", "language": "ru" } } }
+```
+
+### Whisper image anatomy (registry inspection, no full pull)
+
+Layers: pytorch:2.7.1-cuda12.8 conda base (4.2 GB) + ffmpeg + pip
+(`ivrit[all]`, torch, hf-hub, runpod) + one RUN-layer per baked model:
+2× ivrit ct2 whisper models + stock `large-v3-turbo` + pyannote diarization +
+speechbrain ECAPA embeddings; final layer `ADD infer.py .` (3 KB handler).
+
+Handler ideas worth borrowing:
+- **`local_files_only=True`** on model load — baked weights never silently hit network
+- **Per-model RUN layers** — changing one model only re-downloads its layer on rebuild
+- **Generator handler + `return_aggregate_stream: True`** — streams progress/segments
+- Pin everything (torch 2.7.1, hf-hub 0.36.0, ivrit 0.2.6)
+- Do NOT copy: startup `sys.exit(1)` on no-CUDA at import (our lesson: never crash
+  at import → stuck queues), `api_key` passed inside job input
+- Their tag history (21 GB → 9.6 GB) shows aggressive size iteration
 
 ## Proven working
 
